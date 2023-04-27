@@ -43,7 +43,7 @@ android {
     namespace 'com.example.position2shp'
     externalNativeBuild {
         cmake {
-            path file('../../../Desktop/shapelib-1.5.0/CMakeLists.txt')
+            path file('../shapelib-1.5.0/CMakeLists.txt')
             version '3.22.1'
         }
     }

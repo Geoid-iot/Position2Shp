@@ -1,0 +1,10 @@
+adb push C:\Users\Franzi\AndroidStudioProjects\Position2Shp2\Shapefiles\BasicShapefiles\EmptyLine\BasicLine.shp /storage/emulated/0/Position2Shp/BasicShapeFiles/EmptyLine/BasicLine.shp
+[100%] /storage/emulated/0/Position2Shp/BasicShapeFiles/EmptyLine/BasicLine.shp
+
+adb push C:\Users\Franzi\AndroidStudioProjects\Position2Shp2\Shapefiles\BasicShapefiles\EmptyPoint\BasicPoint.shp /storage/emulated/0/Position2Shp/BasicShapeFiles/EmptyPoint/BasicPoint.shp
+
+adb push C:\Users\Franzi\AndroidStudioProjects\Position2Shp2\Shapefiles\AX_Gebiet_Kreis\AX_Gebiet_Kreis.shp /storage/emulated/0/Position2Shp/UserShapefiles/BW_Gebiet_Kreis/AX_Gebiet_Kreis.shp
+
+/storage/emulated/0/Position2Shp/UserShapefiles
+
+/storage/emulated/0/Android/data/com.example.position2shp/files/UserShapefiles/BW_Gebiet_Kreis/AX_Gebiet_Kreis.shp

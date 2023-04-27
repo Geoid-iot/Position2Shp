@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">Position2Shp</string>
+    <string name="shapefile_read_permission_denied">Hello world!</string>
+    <string name="action_settings">Settings</string>
+    <string name="action_editShpFile">Edit ShpFile</string>
+
+    <string name="UserShapefiles">/UserShapefiles</string>
+    <string name="NewShapefiles">/NewShapefiles/</string>
+
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="edit">Edit</string>
+    <string name="add">Add</string>
+
+    <string name="save">Save</string>
+
+    <string name="position_in">Position in</string>
+    <string name="wgs84">WGS84</string>
+    <string name="utm">UTM</string>
+    <string name="z">z-value</string>
+    <string name="x">x-value</string>
+    <string name="y">y-value</string>
+    <string name="show_position_in">Show position in:</string>
+
+    <string name="tracking_sensitivity">Tracking sensitivity</string>
+    <string name="tracking_mode">Tracking Mode</string>
+
+    <string name="m">[m]</string>
+
+    <string name="create_new_tracking_shp_or_edit_existing">Create new tracking shp or edit existing:</string>
+    <string name="new_file_name">New file name</string>
+    <string name="create_a_new_shapefile">Create a new shapefile</string>
+    <string name="create_new_shapefile">Create new shapefile</string>
+    <string name="use_existing_shapefile">Use existing shapefile</string>
+    <string name="edit_an_existing_shapefile">Edit an existing shapefile</string>
+    <string name="choose_polygon_fill_color">Choose Polygon fill color</string>
+    <string name="back_to_map">Back to Map</string>
+    <string name="choose_line_color">Choose line color</string>
+    <string name="choose_point_color">Choose Point color</string>
+    <string name="choose_the_background_shapefile">Choose the background shapefile</string>
+    <string name="clear">Clear</string>
+    <string name="map_settings">Map Settings</string>
+    <string name="tracking_settings">Tracking Settings</string>
+    <string name="cancel">Cancel</string>
+
+</resources>

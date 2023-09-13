@@ -2,6 +2,7 @@ package com.example.position2shp.Map;
 
 import android.annotation.SuppressLint;
 import android.graphics.Color;
+import android.graphics.PorterDuff;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -21,36 +22,42 @@ import androidx.fragment.app.Fragment;
 import androidx.navigation.NavController;
 import androidx.navigation.Navigation;
 
-import com.esri.arcgisruntime.mapping.ArcGISMap;
-import com.esri.arcgisruntime.mapping.Basemap;
-import com.esri.arcgisruntime.mapping.view.LocationDisplay;
-import com.esri.arcgisruntime.mapping.view.MapView;
-import com.esri.arcgisruntime.symbology.SimpleFillSymbol;
-import com.esri.arcgisruntime.symbology.SimpleLineSymbol;
-import com.esri.arcgisruntime.symbology.SimpleMarkerSymbol;
-import com.esri.arcgisruntime.symbology.SimpleRenderer;
-import com.example.position2shp.MainActivity;
+import com.example.position2shp.Map.FileParser.ShapefileReader;
 import com.example.position2shp.R;
+import com.example.position2shp.Settings.MapSettingsFragment;
 import com.example.position2shp.Settings.Settings;
 import com.example.position2shp.Util.PositionUtils;
+
+import org.cts.crs.CoordinateReferenceSystem;
+import org.nocrala.tools.gis.data.esri.shapefile.shape.PointData;
+import org.nocrala.tools.gis.data.esri.shapefile.shape.ShapeType;
+import org.osmdroid.api.IMapController;
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
+import org.osmdroid.util.GeoPoint;
+import org.osmdroid.views.CustomZoomButtonsController;
+import org.osmdroid.views.MapView;
+import org.osmdroid.views.overlay.Marker;
+import org.osmdroid.views.overlay.Overlay;
+import org.osmdroid.views.overlay.Polygon;
+import org.osmdroid.views.overlay.Polyline;
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider;
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
-public class MapEditFragment extends Fragment implements AdapterView.OnItemSelectedListener  {
-    private LocationDisplay mLocationDisplay;
-    private MapView mMapView;
-    private ArcGISMap map;
+public class MapEditFragment extends Fragment implements AdapterView.OnItemSelectedListener {
     double latitude = 47.5;
     double longitude = 9.01;
-    private int selectedPointColor = Color.RED;
-    private int selectedLineColor = Color.RED;
-    private int selectedPolygonColor = Color.RED;
-
+    List<Map.Entry<Integer, List<Integer>>> mapping;
     Settings settings;
+    private MapView mMapView;
+    private IMapController mapController;
+    private MyLocationNewOverlay mLocationOverlay;
 
     public MapEditFragment() {
         super(R.layout.mapeditview);
@@ -67,13 +74,6 @@ public class MapEditFragment extends Fragment implements AdapterView.OnItemSelec
         super.onCreate(savedInstanceState);
     }
 
-    /*@Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
-                             Bundle savedInstanceState) {
-        View rootView = getActivity().getLayoutInflater().inflate(R.layout.mapeditview, container, false);
-        return rootView;
-    }*/
-
     @RequiresApi(api = Build.VERSION_CODES.Q)
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
@@ -86,7 +86,7 @@ public class MapEditFragment extends Fragment implements AdapterView.OnItemSelec
 
         Button btnSaveEdit = requireView().findViewById(R.id.btnSaveEdit);
         //btnSaveEdit.setOnClickListener(this::positionTracking);
-        btnSaveEdit.setEnabled(!MainActivity.mPositionTrackingShapefilePath.isEmpty());
+        btnSaveEdit.setEnabled(!settings.positionTrackingShapefilePath.isEmpty());
 
         Button btnCancel = requireView().findViewById(R.id.btnCancel);
         btnCancel.setOnClickListener(v -> {
@@ -94,7 +94,7 @@ public class MapEditFragment extends Fragment implements AdapterView.OnItemSelec
             com.example.position2shp.Map.MapEditFragmentDirections.ActionMapEditFragmentToMapFragment actionToEditFragment = MapEditFragmentDirections.actionMapEditFragmentToMapFragment();
             actionToEditFragment.setSettings(settings);
             navController.navigate(actionToEditFragment);
-            });
+        });
 
         Button btnCenter = requireView().findViewById(R.id.btnCenter2);
         btnCenter.setOnClickListener(v -> centerMapView());
@@ -105,72 +105,41 @@ public class MapEditFragment extends Fragment implements AdapterView.OnItemSelec
         initializeMap();
     }
 
-    private void setGeometryColors()
-    {
-        if (settings.pointColor == TrackingColour.RED.ordinal())
-            selectedPointColor = Color.RED;
-        else if (settings.pointColor == TrackingColour.YELLOW.ordinal())
-            selectedPointColor = Color.YELLOW;
-        else if (settings.pointColor == TrackingColour.GREEN.ordinal())
-            selectedPointColor = Color.GREEN;
-        else if (settings.pointColor == TrackingColour.BLUE.ordinal())
-            selectedPointColor = Color.BLUE;
-
-        if (settings.lineColor == TrackingColour.RED.ordinal())
-            selectedLineColor = Color.RED;
-        else if (settings.lineColor == TrackingColour.YELLOW.ordinal())
-            selectedLineColor = Color.YELLOW;
-        else if (settings.lineColor == TrackingColour.GREEN.ordinal())
-            selectedLineColor = Color.GREEN;
-        else if (settings.lineColor == TrackingColour.BLUE.ordinal())
-            selectedLineColor = Color.BLUE;
-
-        if (MainActivity.colorPolygon == TrackingColour.RED)
-            selectedPolygonColor = Color.RED;
-        else if (MainActivity.colorPolygon == TrackingColour.YELLOW)
-            selectedPolygonColor = Color.YELLOW;
-        else if (MainActivity.colorPolygon == TrackingColour.GREEN)
-            selectedPolygonColor = Color.GREEN;
-        else if (MainActivity.colorPolygon == TrackingColour.BLUE)
-            selectedPolygonColor = Color.BLUE;
-    }
-
     @RequiresApi(api = Build.VERSION_CODES.N)
-    private void initializeBackgroundShpFile(String fileName) {
+    private void initializeBackgroundShpFile(String fileName) throws Exception {
+
+        if (settings == null) return;
+
+        List<Overlay> graphicOverlays = mMapView.getOverlays();
+
+        for (int i = graphicOverlays.size() - 1; i > 0; i--) {
+            mMapView.getOverlays().remove(graphicOverlays.get(i));
+        }
 
         File f = new File(fileName);
         if (f.exists() && f.canRead()) {
-            // create the Symbol
-            String shpFile = fileName.replace(".shp", "");
-            int shapeFileType = PositionUtils.getShapeFileType(shpFile);
+            mMapView.setTileSource(TileSourceFactory.DEFAULT_TILE_SOURCE);
+            mMapView.setUseDataConnection(true);
 
-            // create the Renderer
-            SimpleRenderer renderer = new SimpleRenderer();
-            setGeometryColors();
+            //ShapeConverter.convert();
+            ShapefileReader shpReader = new ShapefileReader(requireContext());
+            mapping = shpReader.attributeToOverlayMapping;
+            List<PointData[]> points = shpReader.convert(f);
+            ShapeType mShapeType = shpReader.mShapeType;
 
-            if (shapeFileType == 3)
-            {
-                SimpleLineSymbol lineSymbol = new SimpleLineSymbol(SimpleLineSymbol.Style.SOLID, selectedLineColor, 1.0f);
-                SimpleFillSymbol fillSymbol = new SimpleFillSymbol(SimpleFillSymbol.Style.SOLID, Color.TRANSPARENT, lineSymbol);
+            String csNameSrc = "EPSG:25832";
+            CoordinateReferenceSystem crs = shpReader.getCRS(f);
+            String name = crs.getName();
 
-                renderer.setSymbol(fillSymbol);
-            }
-            else if (shapeFileType == 5)
-            {
-                SimpleLineSymbol lineSymbol = new SimpleLineSymbol(SimpleLineSymbol.Style.SOLID, selectedPolygonColor, 1.0f);
-                SimpleFillSymbol fillSymbol = new SimpleFillSymbol(SimpleFillSymbol.Style.SOLID, Color.TRANSPARENT, lineSymbol);
-
-                renderer.setSymbol(fillSymbol);
-            }
-            else if (shapeFileType == 1)
-            {
-                SimpleMarkerSymbol pointSymbol =
-                    new SimpleMarkerSymbol(SimpleMarkerSymbol.Style.TRIANGLE, selectedPointColor, 10f);
-                renderer.setSymbol(pointSymbol);
+            List<Overlay> folder = new ArrayList<>();
+            if (name.contains("ETRS89") && name.contains("UTM") && name.contains("32N")) {
+                folder = shpReader.transformToWGS84(mMapView, mShapeType, points, csNameSrc, settings);
+            } else if (name.contains("GCS_WGS_1984")) {
+                folder = shpReader.getOverlay(mMapView, points, mShapeType, settings);
             }
 
-			Shapefile backgroundLayer = new Shapefile(map, fileName, renderer);
-            backgroundLayer.load();
+            mMapView.getOverlayManager().addAll(folder);
+            mMapView.invalidate();
         }
     }
 
@@ -178,61 +147,67 @@ public class MapEditFragment extends Fragment implements AdapterView.OnItemSelec
     private void initializeMap() {
         mMapView = requireView().findViewById(R.id.mapView2);
 
-        map = new ArcGISMap(Basemap.Type.TOPOGRAPHIC, latitude, longitude, 16);
-        mMapView.setMap(map);
-        mLocationDisplay = mMapView.getLocationDisplay();
-        centerMapView();
+        mMapView.setTileSource(TileSourceFactory.MAPNIK);
+        mMapView.getZoomController().setVisibility(CustomZoomButtonsController.Visibility.ALWAYS);
+        mMapView.setMultiTouchControls(true);
+
+        mapController = mMapView.getController();
+        mapController.setZoom(16.0);
+
+        mLocationOverlay = new MyLocationNewOverlay(new GpsMyLocationProvider(requireContext()), mMapView);
+        mLocationOverlay.enableMyLocation();
+        mLocationOverlay.enableFollowLocation();
+
+        mMapView.getOverlays().add(mLocationOverlay);
+        mapController.setCenter(new GeoPoint(latitude, longitude));
     }
 
-    private void createExistingShapefilesArrayAdapter(View view){
-        //ToDo: Let user select destination folder https://developer.android.com/training/data-storage/shared/documents-files
+    private void createExistingShapefilesArrayAdapter(View view) {
         //create dropdown with existing shapefiles
-        String filepath = settings.externalFilesDir + getResources().getString(R.string.UserShapefiles);
         List<String> fileList = new ArrayList<>();
-        Shapefile.collectShapefilesInList(fileList, filepath);
 
-        filepath = settings.externalFilesDir + getResources().getString(R.string.NewShapefiles);
-        Shapefile.collectShapefilesInList(fileList, filepath);
+        String filepath = settings.externalFilesDir + getResources().getString(R.string.new_shp);
+        MapSettingsFragment.collectShapefilesInList(fileList, filepath);
 
-        filepath = settings.externalFilesDir + "/Kreise_BW/";
-        Shapefile.collectShapefilesInList(fileList, filepath);
+        filepath = settings.externalFilesDir + getResources().getString(R.string.background_shp);
+        MapSettingsFragment.collectShapefilesInList(fileList, filepath);
 
         String[] existingShapefiles = new String[fileList.size()];
         existingShapefiles = fileList.toArray(existingShapefiles);
 
         Spinner existingShapefilesSpinner = requireView().findViewById(R.id.spinnerSelectShapefile);
-        ArrayAdapter<String> spinnerArrayAdapter = new ArrayAdapter<>
-                (view.getContext(), android.R.layout.simple_spinner_item, existingShapefiles);
-        spinnerArrayAdapter.setDropDownViewResource(android.R.layout
-                .simple_spinner_dropdown_item);
+        ArrayAdapter<String> spinnerArrayAdapter = new ArrayAdapter<>(view.getContext(), android.R.layout.simple_spinner_item, existingShapefiles);
+        spinnerArrayAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         existingShapefilesSpinner.setAdapter(spinnerArrayAdapter);
 
         existingShapefilesSpinner.setOnItemSelectedListener(this);
     }
 
     public void centerMapView() {
-        mLocationDisplay.setAutoPanMode(LocationDisplay.AutoPanMode.RECENTER);
-        if (!mLocationDisplay.isStarted())
-            mLocationDisplay.startAsync();
+        mapController = mMapView.getController();
+        mapController.setZoom(18.0);
+
+        mapController.setCenter(mLocationOverlay.getMyLocation());
     }
+
 
     @Override
     public void onPause() {
         super.onPause();
-        mMapView.pause();
+        mMapView.onPause();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
     @Override
     public void onResume() {
         super.onResume();
-        mMapView.resume();
+        mMapView.onResume();
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
-        mMapView.dispose();
+
     }
 
     @Override
@@ -244,7 +219,11 @@ public class MapEditFragment extends Fragment implements AdapterView.OnItemSelec
             String externalFilesDir = settings.externalFilesDir + File.separator + existingShapefileName;
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                initializeBackgroundShpFile(externalFilesDir);
+                try {
+                    initializeBackgroundShpFile(externalFilesDir);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
             }
             String shpFile = externalFilesDir.replace(".shp", "");
 
@@ -255,39 +234,84 @@ public class MapEditFragment extends Fragment implements AdapterView.OnItemSelec
             int screenWidth = this.getResources().getDisplayMetrics().widthPixels - 20;
             double textViewWidth = (1.0 / fields.length) * screenWidth;
 
-            for(String s : fields)
-                {
-                    // Inflate your row "template" and fill out the fields.
-                    TextView tv1 = new TextView(requireActivity());
-                    tv1.setText(s);
-                    tv1.setTextColor(Color.BLACK);
-                    tv1.setTextSize(15);
-                    tv1.setPadding(0, 25, 0, 25);
-                    tv1.setBackgroundColor(Color.parseColor("#f0f0f0"));
-                    tv1.setWidth((int)textViewWidth);
-                    tv1.setGravity(Gravity.CENTER);
-                    //tv1.setLayoutParams(new TableRow.LayoutParams(colCount));
-                    row.addView(tv1);
-                }
+            for (String s : fields) {
+                // Inflate your row "template" and fill out the fields.
+                TextView tv1 = new TextView(requireActivity());
+                tv1.setText(s);
+                tv1.setTextColor(Color.BLACK);
+                tv1.setTextSize(15);
+                tv1.setPadding(0, 25, 0, 25);
+                tv1.setBackgroundColor(Color.parseColor("#f0f0f0"));
+                tv1.setWidth((int) textViewWidth);
+                tv1.setGravity(Gravity.CENTER);
+                //tv1.setLayoutParams(new TableRow.LayoutParams(colCount));
+                row.addView(tv1);
+            }
 
             int recordCount = PositionUtils.getShpRecordCount(shpFile);
             int[] values = PositionUtils.getShpFieldTypes(shpFile);
 
             TableLayout table = requireView().findViewById(R.id.tlAttributes);
             table.removeAllViews();
-            for (int rowId = 0; rowId < recordCount; rowId++)
-            {
+            for (int rowId = 0; rowId < recordCount; rowId++) {
                 TableRow row2 = new TableRow(requireActivity());
+                row2.setTag(rowId);
+                row2.setOnClickListener(v -> {
+                    TableRow tr = (TableRow) v;
+
+                    int id = (int) v.getTag();
+
+                    int amountOverlays = mMapView.getOverlays().size();
+                    List<Integer> lastItem = mapping.get(mapping.size()-1).getValue();
+                    int amountGeometries = lastItem.get(lastItem.size() -1) + 1;
+
+                    if (amountGeometries < amountOverlays - 1) //subtract location overlay
+                    {
+                        int overlySize = mMapView.getOverlays().size()-1;
+                        while (overlySize > amountGeometries) {
+                            mMapView.getOverlayManager().remove(mMapView.getOverlays().size() - 1);
+                            mMapView.invalidate();
+                            overlySize = mMapView.getOverlays().size() - 1;
+                        }
+                    }
+
+                    List<Integer> testMap = mapping.get(id).getValue();
+                    for (int index : testMap) {
+
+                        Overlay overlay = mMapView.getOverlayManager().get(index + 1);
+                        if (overlay.getClass() == Polygon.class) {
+                            Polygon p = new Polygon();
+                            p.setPoints(((Polygon) overlay).getActualPoints());
+                            p.getOutlinePaint().setColor(Color.MAGENTA);
+                            mMapView.getOverlayManager().add(p);
+                            mMapView.invalidate();
+                        }
+                        else if (overlay.getClass() == Polyline.class) {
+                            Polyline p = new Polyline();
+                            p.setPoints(((Polyline) overlay).getActualPoints());
+                            p.getOutlinePaint().setColor(Color.MAGENTA);
+                            mMapView.getOverlayManager().add(p);
+                            mMapView.invalidate();
+                        }
+                        else if (overlay.getClass() == Marker.class) {
+                            Marker m = new Marker(mMapView);
+                            m.setPosition(((Marker) overlay).getPosition());
+                            m.setIcon(requireContext().getResources().getDrawable(R.drawable.baseline_circle_24));
+                            m.getIcon().setColorFilter(Color.MAGENTA, PorterDuff.Mode.MULTIPLY);
+                            mMapView.getOverlayManager().add(m);
+                            mMapView.invalidate();
+                        }
+                    }
+
+                });
                 table.addView(row2);
             }
 
-            for (int j = 0; j < values.length; j++)
-            {
+            for (int j = 0; j < values.length; j++) {
                 if (values[j] == 0) //String
                 {
                     String[] attributes = PositionUtils.getStringAttributeTable(shpFile, j);
-                    for (int k = 0; k < attributes.length; k++)
-                    {
+                    for (int k = 0; k < attributes.length; k++) {
                         String s = attributes[k];
                         TableRow row2 = (TableRow) table.getChildAt(k);
                         TextView tv1 = new TextView(requireActivity());
@@ -296,18 +320,15 @@ public class MapEditFragment extends Fragment implements AdapterView.OnItemSelec
                         tv1.setTextSize(15);
                         tv1.setPadding(0, 25, 0, 25);
                         //tv1.setBackgroundColor(Color.parseColor("#f0f0f0"));
-                        tv1.setWidth((int)textViewWidth);
+                        tv1.setWidth((int) textViewWidth);
                         tv1.setGravity(Gravity.CENTER);
                         //tv1.setLayoutParams(new TableRow.LayoutParams(j));
                         row2.addView(tv1);
                     }
-                }
-
-                else if (values[j] == 1) //int
+                } else if (values[j] == 1) //int
                 {
                     int[] attributes = PositionUtils.getIntAttributeTable(shpFile, j);
-                    for (int k = 0; k < attributes.length; k++)
-                    {
+                    for (int k = 0; k < attributes.length; k++) {
                         String s = String.valueOf(attributes[k]);
                         TableRow row2 = (TableRow) table.getChildAt(k);
                         TextView tv1 = new TextView(requireActivity());
@@ -316,18 +337,15 @@ public class MapEditFragment extends Fragment implements AdapterView.OnItemSelec
                         tv1.setTextSize(15);
                         tv1.setPadding(0, 25, 0, 25);
                         //tv1.setBackgroundColor(Color.parseColor("#f0f0f0"));
-                        tv1.setWidth((int)textViewWidth);
+                        tv1.setWidth((int) textViewWidth);
                         tv1.setGravity(Gravity.CENTER);
                         //tv1.setLayoutParams(new TableRow.LayoutParams(j));
                         row2.addView(tv1);
                     }
-                }
-
-                else if (values[j] == 2) //double
+                } else if (values[j] == 2) //double
                 {
                     double[] attributes = PositionUtils.getDoubleAttributeTable(shpFile, j);
-                    for (int k = 0; k < attributes.length; k++)
-                    {
+                    for (int k = 0; k < attributes.length; k++) {
                         String s = String.valueOf(attributes[k]);
                         TableRow row2 = (TableRow) table.getChildAt(k);
                         TextView tv1 = new TextView(requireActivity());
@@ -336,7 +354,7 @@ public class MapEditFragment extends Fragment implements AdapterView.OnItemSelec
                         tv1.setTextSize(15);
                         tv1.setPadding(0, 25, 0, 25);
                         //tv1.setBackgroundColor(Color.parseColor("#f0f0f0"));
-                        tv1.setWidth((int)textViewWidth);
+                        tv1.setWidth((int) textViewWidth);
                         tv1.setGravity(Gravity.CENTER);
                         //tv1.setLayoutParams(new TableRow.LayoutParams(j));
                         row2.addView(tv1);

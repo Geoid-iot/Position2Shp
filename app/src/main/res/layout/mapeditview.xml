@@ -79,17 +79,15 @@
 
         </LinearLayout>
 
-        <com.esri.arcgisruntime.mapping.view.MapView
+        <org.osmdroid.views.MapView
             android:id="@+id/mapView2"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginBottom="350dp"
+            android:layout_marginBottom="300dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/spinnerSelectShapefile">
-
-        </com.esri.arcgisruntime.mapping.view.MapView>
+            app:layout_constraintTop_toBottomOf="@+id/spinnerSelectShapefile" />
 
         <Button
             android:id="@+id/btnCenter2"

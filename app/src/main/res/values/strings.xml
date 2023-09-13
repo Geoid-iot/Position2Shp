@@ -6,8 +6,8 @@
     <string name="action_settings">Settings</string>
     <string name="action_editShpFile">Edit ShpFile</string>
 
-    <string name="UserShapefiles">/UserShapefiles</string>
-    <string name="NewShapefiles">/NewShapefiles/</string>
+    <string name="background_shp">/BackgroundShapefiles/</string>
+    <string name="new_shp">/NewShapefiles/</string>
 
     <string name="start">Start</string>
     <string name="stop">Stop</string>
@@ -18,7 +18,7 @@
 
     <string name="position_in">Position in</string>
     <string name="wgs84">WGS84</string>
-    <string name="utm">UTM</string>
+    <string name="utm">UTM 32N</string>
     <string name="z">z-value</string>
     <string name="x">x-value</string>
     <string name="y">y-value</string>
@@ -44,5 +44,13 @@
     <string name="map_settings">Map Settings</string>
     <string name="tracking_settings">Tracking Settings</string>
     <string name="cancel">Cancel</string>
-
+    <string name="choose_polygon_line_colour">Choose Polygon line colour</string>
+    <string name="show_polygon_in_ar">Show selected Polygon in AR (Augmented Reality)</string>
+    <string name="show_polyline_in_ar">Show selected Polyline in AR (Augmented Reality)</string>
+    <string name="show_point_in_ar">Show selected Point in AR (Augmented Reality)</string>
+    <string name="show_in_ar">Show in  AR</string>
+    <string name="title">Title</string>
+    <string name="description">Description</string>
+    <string name="address">Address</string>
+    <string name="apiKey">abc</string>
 </resources>

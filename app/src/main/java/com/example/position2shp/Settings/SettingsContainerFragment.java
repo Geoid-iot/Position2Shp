@@ -11,7 +11,6 @@ import androidx.navigation.NavController;
 import androidx.navigation.Navigation;
 import androidx.viewpager2.widget.ViewPager2;
 
-import com.example.position2shp.MainActivity;
 import com.example.position2shp.R;
 import com.example.position2shp.Util.PositionUtils;
 import com.google.android.material.tabs.TabLayout;
@@ -33,26 +32,24 @@ public class SettingsContainerFragment extends Fragment {
             settings = SettingsContainerFragmentArgs.fromBundle(getArguments()).getSettings();
         }
 
+        final Settings settingsCopy = new Settings(settings);
+
         TabLayout tabLayout = view.findViewById(R.id.tab_layout);
         ViewPager2 viewPager = view.findViewById(R.id.pager2);
         ViewPagerFragmentAdapter myAdapter = new ViewPagerFragmentAdapter(getActivity(), settings);
 
         Button btnSave = requireView().findViewById(R.id.btn_save_settings);
         btnSave.setOnClickListener(v -> {
-            if (myAdapter.mapSettingsFragment != null) {
-                settings.setMapSettings(myAdapter.mapSettingsFragment.settings);
-            }
-
             if (myAdapter.trackingSettingsFragment != null) {
-                if (myAdapter.trackingSettingsFragment.createNewShp)
+                if (settings.createNewShapefile)
                 {
                     String newShapefileName = myAdapter.trackingSettingsFragment.etNewShpFileName.getText().toString();
                     newShapefileName = newShapefileName.replace(".shp", "");
                     myAdapter.trackingSettingsFragment.createNewShapefile(newShapefileName);
                 }
                 else {
-                    MainActivity.mPositionTrackingShapefilePath = myAdapter.trackingSettingsFragment.settings.externalFilesDir + File.separator+ myAdapter.trackingSettingsFragment.existingShapefileName;
-                    String shapeFile = MainActivity.mPositionTrackingShapefilePath.replace(".shp", "");
+                    settings.positionTrackingShapefilePath = settings.externalFilesDir + File.separator+ myAdapter.trackingSettingsFragment.existingShapefileName;
+                    String shapeFile = settings.positionTrackingShapefilePath.replace(".shp", "");
                     PositionUtils.setShpFilePath(shapeFile);
                 }
 
@@ -71,7 +68,7 @@ public class SettingsContainerFragment extends Fragment {
         btnBack.setOnClickListener(v -> {
             NavController navController = Navigation.findNavController(requireActivity(), R.id.fragment_container_view);
             com.example.position2shp.Settings.SettingsContainerFragmentDirections.ActionSettingsContainerFragmentToMapFragment actionToEditFragment = SettingsContainerFragmentDirections.actionSettingsContainerFragmentToMapFragment();
-            actionToEditFragment.setSettings(settings);
+            actionToEditFragment.setSettings(settingsCopy);
             navController.navigate(actionToEditFragment);
         });
 

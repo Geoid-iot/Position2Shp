@@ -32,6 +32,10 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
 
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
     ndkVersion "21.0.6113669"
     sourceSets {
         main {
@@ -41,6 +45,19 @@ android {
         }
     }
     namespace 'com.example.position2shp'
+
+    packagingOptions {
+        exclude 'META-INF/registryFile.jaiext'
+        exclude 'META-INF/INDEX.LIST'
+        exclude 'about.ini'
+        exclude 'about.mappings'
+        exclude 'modeling32.png'
+        exclude 'META-INF/registryFile.jai'
+        exclude 'about.properties'
+        exclude 'META-INF/DEPENDENCIES'
+        exclude 'plugin.xml'
+        exclude 'plugin.properties'
+    }
     externalNativeBuild {
         cmake {
             path file('../shapelib-1.5.0/CMakeLists.txt')
@@ -50,6 +67,8 @@ android {
 }
 
 dependencies {
+    implementation 'com.google.ar:core:1.38.0'
+    testImplementation 'junit:junit:4.13.2'
     def lifecycle_version = '2.6.1'
 
     implementation fileTree(dir: "libs", include: ["*.jar"])
@@ -64,21 +83,21 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-viewmodel-savedstate:$lifecycle_version"
 
     // Annotation processor
-    annotationProcessor "androidx.lifecycle:lifecycle-compiler:$lifecycle_version"
+    //annotationProcessor "androidx.lifecycle:lifecycle-compiler:$lifecycle_version"
     // alternately - if using Java8, use the following instead of lifecycle-compiler
     //noinspection GradleDependency
     implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycle_version"
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
-    implementation 'androidx.core:core-ktx:1.10.0'
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.8.10"
+    implementation 'androidx.core:core-ktx:1.10.1'
     implementation "androidx.fragment:fragment-ktx:1.5.7"
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'com.google.android.material:material:1.8.0'
+    implementation 'com.google.android.material:material:1.9.0'
     implementation 'com.google.android.gms:play-services-maps:18.1.0'
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
-    implementation fileTree(dir: 'C:\\Users\\Franzi\\Documents\\arcgis-runtime-sdk-android-100.9.0\\libs\\aar', include: ['*.aar', '*.jar'], exclude: [])
+    //implementation fileTree(dir: 'C:\\Users\\Franzi\\Documents\\arcgis-runtime-sdk-android-100.9.0\\libs\\aar', include: ['*.aar', '*.jar'], exclude: [])
 
     def nav_version = "2.5.3"
 
@@ -92,4 +111,10 @@ dependencies {
     // Testing Navigation
     androidTestImplementation "androidx.navigation:navigation-testing:$nav_version"
 
+    implementation 'org.osmdroid:osmdroid-android:6.1.10'
+    implementation 'org.osmdroid:osmdroid-shape:6.1.10'
+
+    implementation 'org.orbisgis:cts:1.5.2'
+
+   // implementation fileTree(dir: 'C:\\Users\\Franzi\\Desktop\\geotools-28.2-bin\\geotools-28.2\\lib', include: ['*.jar'], exclude: ['guava-30.1.1-jre.jar', 'guava-31.1-jre.jar', 'error_prone_annotations-2.5.1.jar', 'jt-scale-1.1.24.jar', 'jt-scale2-1.1.24.jar'])
 }

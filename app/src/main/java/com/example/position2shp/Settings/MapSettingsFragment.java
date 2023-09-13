@@ -12,23 +12,25 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.fragment.app.Fragment;
 
-import com.example.position2shp.MainActivity;
 import com.example.position2shp.Map.MapFragment;
-import com.example.position2shp.Map.Shapefile;
 import com.example.position2shp.Map.TrackingColour;
 import com.example.position2shp.R;
-import com.example.position2shp.Settings.Spinner.ColorPolygonSpinner;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class MapSettingsFragment extends Fragment implements AdapterView.OnItemSelectedListener {
-    public Settings settings;
+    private final Settings settings;
 
     public MapSettingsFragment(Settings settings) {
         super(R.layout.mapsettings);
         this.settings = settings;
+    }
+
+    public Settings getSettings(){
+        return settings;
     }
 
     public String getBackgroundShapefile()
@@ -47,79 +49,125 @@ public class MapSettingsFragment extends Fragment implements AdapterView.OnItemS
 
         createLineColorSpinner(view);
 
-        createPolygonColorSpinner(view);
+        createPolygonFillColorSpinner(view);
+
+        createPolygonLineColorSpinner(view);
     }
 
-    private void createPointColorSpinner(View view){
+    private String[] createColorArray(){
         //create dropdown with available reference systems
         String[] colors = new String[0];
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
             colors = MapFragment.getNames(TrackingColour.class);
         }
+        return colors;
+    }
 
+    private ArrayAdapter<String> createColorArrayAdapter(View view, String[] colors){
         ArrayAdapter<String> colorAdapter = new ArrayAdapter<>
                 (view.getContext(), android.R.layout.simple_spinner_item, colors);
         colorAdapter.setDropDownViewResource(android.R.layout
                 .simple_spinner_dropdown_item);
+
+        return colorAdapter;
+    }
+
+    private void createPointColorSpinner(View view){
+        String[] colors = createColorArray();
+        ArrayAdapter<String> colorAdapter = createColorArrayAdapter(view, colors);
 
         Spinner colorSpinner = requireView().findViewById(R.id.spinnerPointColor);
         colorSpinner.setAdapter(colorAdapter);
 
         colorSpinner.setOnItemSelectedListener(this);
-        colorSpinner.setSelection(settings.pointColor);
+        int idx = Arrays.asList(colors).indexOf(TrackingColour.fromValue(settings.pointColor).toString());
+        colorSpinner.setSelection(idx);
     }
 
     private void createLineColorSpinner(View view){
-        //create dropdown with available reference systems
-        String[] colors = new String[0];
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            colors = MapFragment.getNames(TrackingColour.class);
-        }
-
-        ArrayAdapter<String> colorAdapter = new ArrayAdapter<>
-                (view.getContext(), android.R.layout.simple_spinner_item, colors);
-        colorAdapter.setDropDownViewResource(android.R.layout
-                .simple_spinner_dropdown_item);
+        String[] colors = createColorArray();
+        ArrayAdapter<String> colorAdapter = createColorArrayAdapter(view, colors);
 
         Spinner colorSpinner = requireView().findViewById(R.id.spinnerLineColor);
         colorSpinner.setAdapter(colorAdapter);
 
         colorSpinner.setOnItemSelectedListener(this);
-        colorSpinner.setSelection(settings.lineColor);
+        int idx = Arrays.asList(colors).indexOf(TrackingColour.fromValue(settings.lineColor).toString());
+        colorSpinner.setSelection(idx);
     }
 
-    private void createPolygonColorSpinner(View view){
-        //create dropdown with available reference systems
-        String[] colors = new String[0];
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            colors = MapFragment.getNames(TrackingColour.class);
-        }
-
-        ArrayAdapter<String> colorAdapter = new ArrayAdapter<>
-                (view.getContext(), android.R.layout.simple_spinner_item, colors);
-        colorAdapter.setDropDownViewResource(android.R.layout
-                .simple_spinner_dropdown_item);
+    private void createPolygonFillColorSpinner(View view){
+        String[] colors = createColorArray();
+        ArrayAdapter<String> colorAdapter = createColorArrayAdapter(view, colors);
 
         Spinner colorSpinner = requireView().findViewById(R.id.spinnerPolygonFillColor);
         colorSpinner.setAdapter(colorAdapter);
 
-        ColorPolygonSpinner colorPolygonSpinner = new ColorPolygonSpinner();
-        colorSpinner.setOnItemSelectedListener(colorPolygonSpinner);
-        colorSpinner.setSelection(MainActivity.colorPolygon.ordinal());
+        colorSpinner.setOnItemSelectedListener(this);
+        int idx = Arrays.asList(colors).indexOf(TrackingColour.fromValue(settings.polygonFillColour).toString());
+        colorSpinner.setSelection(idx);
+    }
+
+    private void createPolygonLineColorSpinner(View view){
+        String[] colors = createColorArray();
+        ArrayAdapter<String> colorAdapter = createColorArrayAdapter(view, colors);
+
+        Spinner colorSpinner = requireView().findViewById(R.id.spinnerPolygonLineColour);
+        colorSpinner.setAdapter(colorAdapter);
+
+        colorSpinner.setOnItemSelectedListener(this);
+        int idx = Arrays.asList(colors).indexOf(TrackingColour.fromValue(settings.polygonLineColour).toString());
+        colorSpinner.setSelection(idx);
+    }
+
+    // find all shapefiles in user folder
+    public static void collectShapefilesInList(List<String> fileList, String filepath) {
+        File f = new File(filepath);
+        File[] files = f.listFiles();
+        if (files != null) {
+            for (File inFile : files) {
+                if (inFile.isDirectory()) {
+                    File[] files2 = inFile.listFiles();
+                    if (files2 != null) {
+                        for (File inFile2 : files2) {
+                            if (inFile2.isFile() && inFile2.getAbsolutePath().contains(".shp")) {
+                                String searchString = "/files/";
+                                String parentPathName = inFile2.getParent();
+                                String filename = null;
+                                if (parentPathName != null) {
+                                    filename = parentPathName.substring(parentPathName.indexOf(searchString) + searchString.length());
+                                }
+
+                                fileList.add(filename + File.separator + inFile2.getName());
+                            }
+                        }
+                    }
+
+                }
+                else if (inFile.isFile() && inFile.getAbsolutePath().contains(".shp")) {
+                    String searchString = "/files/";
+                    String parentPathName = inFile.getParent();
+                    String filename = null;
+                    if (parentPathName != null) {
+                        filename = parentPathName.substring(parentPathName.indexOf(searchString) + searchString.length());
+                    }
+
+                    fileList.add(filename + File.separator + inFile.getName());
+                }
+            }
+        }
     }
 
     private void createExistingShapefilesArrayAdapter(View view){
-        //ToDo: Let user select destination folder https://developer.android.com/training/data-storage/shared/documents-files
         //create dropdown with existing shapefiles
-        String filepath = settings.externalFilesDir + getResources().getString(R.string.UserShapefiles);
         List<String> fileList = new ArrayList<>();
-        Shapefile.collectShapefilesInList(fileList, filepath);
+        fileList.add("---- None -----");
 
-        filepath = settings.externalFilesDir + getResources().getString(R.string.NewShapefiles);
-        Shapefile.collectShapefilesInList(fileList, filepath);
+        String filepath = settings.externalFilesDir + getResources().getString(R.string.new_shp);
+        collectShapefilesInList(fileList, filepath);
 
-        filepath = settings.externalFilesDir + "/Kreise_BW/";
-        Shapefile.collectShapefilesInList(fileList, filepath);
+        filepath = settings.externalFilesDir + getResources().getString(R.string.background_shp);
+        collectShapefilesInList(fileList, filepath);
 
         String[] existingShapefiles = new String[fileList.size()];
         existingShapefiles = fileList.toArray(existingShapefiles);
@@ -131,7 +179,40 @@ public class MapSettingsFragment extends Fragment implements AdapterView.OnItemS
                 .simple_spinner_dropdown_item);
         existingShapefilesSpinner.setAdapter(spinnerArrayAdapter);
 
+        int idx = 0;
+        for (String file : fileList)
+        {
+            if (settings.backgroundShpFile.contains(file))
+            {
+                idx = fileList.indexOf(file);
+            }
+        }
+
+        existingShapefilesSpinner.setSelection(idx);
         existingShapefilesSpinner.setOnItemSelectedListener(this);
+    }
+
+    private int getColor(int position){
+        TrackingColour refSystem = TrackingColour.values()[position];
+        int color = 0;
+        switch (refSystem){
+            case RED:
+                color = TrackingColour.RED.getNumVal();
+                break;
+            case YELLOW:
+                color = TrackingColour.YELLOW.getNumVal();
+                break;
+            case BLUE:
+                color = TrackingColour.BLUE.getNumVal();
+                break;
+            case GREEN:
+                color = TrackingColour.GREEN.getNumVal();
+                break;
+            case TRANSPERENT:
+                color = TrackingColour.TRANSPERENT.getNumVal();
+                break;
+        }
+        return color;
     }
 
     @Override
@@ -144,38 +225,16 @@ public class MapSettingsFragment extends Fragment implements AdapterView.OnItemS
             settings.backgroundShpFile = settings.externalFilesDir + File.separator + selectedShapefile;
         }
         else if (viewId == R.id.spinnerLineColor) {
-            TrackingColour refSystem = TrackingColour.values()[position];
-            switch (refSystem){
-                case RED:
-                    settings.lineColor = TrackingColour.RED.ordinal();
-                    break;
-                case YELLOW:
-                    settings.lineColor = TrackingColour.YELLOW.ordinal();
-                    break;
-                case BLUE:
-                    settings.lineColor = TrackingColour.BLUE.ordinal();
-                    break;
-                case GREEN:
-                    settings.lineColor = TrackingColour.GREEN.ordinal();
-                    break;
-            }
+            settings.lineColor = getColor(position);
         }
         else if (viewId == R.id.spinnerPointColor) {
-            TrackingColour refSystem = TrackingColour.values()[position];
-            switch (refSystem){
-                case RED:
-                    settings.pointColor = TrackingColour.RED.ordinal();
-                    break;
-                case YELLOW:
-                    settings.pointColor = TrackingColour.YELLOW.ordinal();
-                    break;
-                case BLUE:
-                    settings.pointColor = TrackingColour.BLUE.ordinal();
-                    break;
-                case GREEN:
-                    settings.pointColor = TrackingColour.GREEN.ordinal();
-                    break;
-            }
+            settings.pointColor = getColor(position);
+        }
+        else if (viewId == R.id.spinnerPolygonLineColour) {
+            settings.polygonLineColour = getColor(position);
+        }
+        else if (viewId == R.id.spinnerPolygonFillColor) {
+            settings.polygonFillColour = getColor(position);
         }
     }
 

@@ -19,7 +19,6 @@ import androidx.fragment.app.Fragment;
 import com.example.position2shp.MainActivity;
 import com.example.position2shp.Map.MapFragment;
 import com.example.position2shp.Map.ReferenceSystems;
-import com.example.position2shp.Map.Shapefile;
 import com.example.position2shp.Map.ShapefileTypes;
 import com.example.position2shp.R;
 import com.example.position2shp.Settings.Spinner.ShapeFileTypeSpinner;
@@ -38,14 +37,17 @@ public class TrackingSettingsFragment extends Fragment implements AdapterView.On
     private TextView displayUnit;
     public EditText etTrackingSensitivity;
     public String existingShapefileName;
-    boolean createNewShp = true;
     public EditText etNewShpFileName;
-    Settings settings;
+    private final Settings settings;
 
     public TrackingSettingsFragment(Settings settings) {
         super(R.layout.trackingsettings);
 
         this.settings = settings;
+    }
+
+    public Settings getSettings(){
+        return settings;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.N)
@@ -79,7 +81,7 @@ public class TrackingSettingsFragment extends Fragment implements AdapterView.On
         rbtnCreate.setOnCheckedChangeListener((group, checkedId) -> {
             if (checkedId)
             {
-                createNewShp = true;
+                settings.createNewShapefile = true;
                 rbtnEdit.setChecked(false);
                 tvCreateNewShapefile.setText(R.string.create_new_shapefile);
                 ArrayAdapter<String> shpFilesTypesAdapter = createShapefileTypesArrayAdapter(view);
@@ -94,7 +96,7 @@ public class TrackingSettingsFragment extends Fragment implements AdapterView.On
         rbtnEdit.setOnCheckedChangeListener((group, checkedId) -> {
             if (checkedId)
             {
-                createNewShp = false;
+                settings.createNewShapefile = false;
                 rbtnCreate.setChecked(false);
                 tvCreateNewShapefile.setText(R.string.edit_an_existing_shapefile);
                 ArrayAdapter<String> spinnerArrayAdapter = createExistingShapefilesArrayAdapter(view);
@@ -119,14 +121,11 @@ public class TrackingSettingsFragment extends Fragment implements AdapterView.On
     }
 
     private ArrayAdapter<String> createExistingShapefilesArrayAdapter(View view){
-        //ToDo: Let user select destination folder https://developer.android.com/training/data-storage/shared/documents-files
         //create list with existing shapefile names
-        String filepath = settings.externalFilesDir + getResources().getString(R.string.UserShapefiles);
         List<String> fileList = new ArrayList<>();
-        Shapefile.collectShapefilesInList(fileList, filepath);
 
-        filepath = settings.externalFilesDir + getResources().getString(R.string.NewShapefiles);
-        Shapefile.collectShapefilesInList(fileList, filepath);
+        String filepath = settings.externalFilesDir + getResources().getString(R.string.new_shp);
+        MapSettingsFragment.collectShapefilesInList(fileList, filepath);
 
         String[] existingShapefiles = new String[fileList.size()];
         existingShapefiles = fileList.toArray(existingShapefiles);
@@ -187,7 +186,12 @@ public class TrackingSettingsFragment extends Fragment implements AdapterView.On
     }
 
     public void createNewShapefile(String newShapefileName) {
-        String destinationFilepath = settings.externalFilesDir + getResources().getString(R.string.NewShapefiles) + newShapefileName;
+        if (newShapefileName.isEmpty()) {
+            Toast.makeText(requireContext(), "Shapefile name is empty!", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        String destinationFilepath = settings.externalFilesDir + getResources().getString(R.string.new_shp) + newShapefileName;
 
         File outFileDir = new File(destinationFilepath);
         if(!outFileDir.exists()){
@@ -209,7 +213,7 @@ public class TrackingSettingsFragment extends Fragment implements AdapterView.On
                 PositionUtils.createPolygonShapefile();
 
             File destProjFile = new File(finalDestinationFilepath + ".prj");
-            if (settings.refSystem == ReferenceSystems.UTM.ordinal())
+            if (settings.refSystem == ReferenceSystems.UTM_32N.ordinal())
             {
                 File srcProjFile = new File(settings.projFilesDir + "/25832.prj");
                 try {
@@ -230,7 +234,7 @@ public class TrackingSettingsFragment extends Fragment implements AdapterView.On
 
         }).start();
 
-        MainActivity.mPositionTrackingShapefilePath = destinationFilepath.concat(".shp");
+        settings.positionTrackingShapefilePath = destinationFilepath.concat(".shp");
     }
 
     public static void copy(File src, File dst) throws IOException {
@@ -258,17 +262,20 @@ public class TrackingSettingsFragment extends Fragment implements AdapterView.On
                     tvTrackingSensitivity.setVisibility(View.VISIBLE);
                     etTrackingSensitivity.setVisibility(View.VISIBLE);
                     displayUnit.setVisibility(View.VISIBLE);
+                    settings.automaticTracking = true;
                     break;
                 // Manual adding
                 case 1:
                     tvTrackingSensitivity.setVisibility(View.GONE);
                     etTrackingSensitivity.setVisibility(View.GONE);
                     displayUnit.setVisibility(View.GONE);
-                    CharSequence text = "Not implemented yet!";
+
+                    settings.automaticTracking = false;
+                    /*CharSequence text = "Not implemented yet!";
                     int duration = Toast.LENGTH_SHORT;
 
                     Toast toast = Toast.makeText(getContext(), text, duration);
-                    toast.show();
+                    toast.show();*/
                     break;
                 default:
                     break;
@@ -281,14 +288,14 @@ public class TrackingSettingsFragment extends Fragment implements AdapterView.On
                 case WGS84:
                     settings.refSystem = ReferenceSystems.WGS84.ordinal();
                     break;
-                case UTM:
-                    settings.refSystem = ReferenceSystems.UTM.ordinal();
+                case UTM_32N:
+                    settings.refSystem = ReferenceSystems.UTM_32N.ordinal();
                     break;
             }
         }
         else if (viewId == R.id.spinnerShapefileType)
         {
-            if (!createNewShp) {
+            if (settings != null && !settings.createNewShapefile) {
                 existingShapefileName = adapterView.getSelectedItem().toString();
                 String externalFilesDir = settings.externalFilesDir + File.separator + existingShapefileName;
                 String shpFile = externalFilesDir.replace(".shp", "");

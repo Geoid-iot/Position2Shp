@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
@@ -88,6 +89,26 @@
                 android:layout_marginTop="16dp"
                 app:layout_constraintStart_toStartOf="@id/tvColorPolygonFill"
                 app:layout_constraintTop_toBottomOf="@+id/tvColorPolygonFill" />
+
+            <TextView
+                android:id="@+id/tvColorPolygonLine"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="16dp"
+                android:text="@string/choose_polygon_line_colour"
+                app:layout_constraintStart_toStartOf="parent"
+                android:textAppearance="@style/TextAppearance.AppCompat.Body1"
+                app:layout_constraintTop_toBottomOf="@+id/spinnerPolygonFillColor" />
+
+            <Spinner
+                android:id="@+id/spinnerPolygonLineColour"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="16dp"
+                app:layout_constraintStart_toStartOf="@id/tvColorPolygonLine"
+                app:layout_constraintTop_toBottomOf="@+id/tvColorPolygonLine" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
     </ScrollView>

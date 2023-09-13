@@ -1,17 +1,12 @@
 package com.example.position2shp.Map;
 
+import static android.widget.Toast.LENGTH_SHORT;
+
 import android.Manifest;
 import android.annotation.SuppressLint;
-import android.content.Context;
-import android.content.pm.PackageManager;
-import android.graphics.Color;
 import android.location.Location;
-import android.location.LocationListener;
-import android.location.LocationManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.util.Log;
-import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -21,34 +16,34 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 import androidx.core.content.res.ResourcesCompat;
 import androidx.fragment.app.Fragment;
 import androidx.navigation.NavController;
 import androidx.navigation.Navigation;
 
-import com.esri.arcgisruntime.geometry.Point;
-import com.esri.arcgisruntime.geometry.PointCollection;
-import com.esri.arcgisruntime.geometry.Polygon;
-import com.esri.arcgisruntime.geometry.Polyline;
-import com.esri.arcgisruntime.geometry.SpatialReference;
-import com.esri.arcgisruntime.mapping.ArcGISMap;
-import com.esri.arcgisruntime.mapping.Basemap;
-import com.esri.arcgisruntime.mapping.Viewpoint;
-import com.esri.arcgisruntime.mapping.view.DefaultMapViewOnTouchListener;
-import com.esri.arcgisruntime.mapping.view.Graphic;
-import com.esri.arcgisruntime.mapping.view.GraphicsOverlay;
-import com.esri.arcgisruntime.mapping.view.LocationDisplay;
-import com.esri.arcgisruntime.mapping.view.MapView;
-import com.esri.arcgisruntime.symbology.SimpleFillSymbol;
-import com.esri.arcgisruntime.symbology.SimpleLineSymbol;
-import com.esri.arcgisruntime.symbology.SimpleMarkerSymbol;
-import com.esri.arcgisruntime.symbology.SimpleRenderer;
-import com.esri.arcgisruntime.util.ListenableList;
 import com.example.position2shp.MainActivity;
+import com.example.position2shp.Map.FileParser.ShapefileReader;
 import com.example.position2shp.R;
 import com.example.position2shp.Settings.Settings;
 import com.example.position2shp.Util.PositionUtils;
+
+import org.cts.IllegalCoordinateException;
+import org.cts.crs.CRSException;
+import org.cts.crs.CoordinateReferenceSystem;
+import org.cts.op.CoordinateOperationException;
+import org.nocrala.tools.gis.data.esri.shapefile.shape.PointData;
+import org.nocrala.tools.gis.data.esri.shapefile.shape.ShapeType;
+import org.osmdroid.api.IMapController;
+import org.osmdroid.events.MapEventsReceiver;
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
+import org.osmdroid.util.GeoPoint;
+import org.osmdroid.views.CustomZoomButtonsController;
+import org.osmdroid.views.MapView;
+import org.osmdroid.views.overlay.MapEventsOverlay;
+import org.osmdroid.views.overlay.Overlay;
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider;
+import org.osmdroid.views.overlay.mylocation.IMyLocationProvider;
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 
 import java.io.File;
 import java.text.DecimalFormat;
@@ -56,29 +51,29 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
+
 
 public class MapFragment extends Fragment {
     final DecimalFormat df = new DecimalFormat("#.#####");
     final DecimalFormat dfUtm = new DecimalFormat("#.##");
-    private PointCollection polyLineCollection;
-    private LocationDisplay mLocationDisplay;
+    double latitude = 47.5;
+    double longitude = 9.01;
+    private List<GeoPoint> geoPoints;
+    private MyLocationNewOverlay mLocationOverlay;
     private TextView textViewGpsX, textViewGpsY, textViewGpsZ;
     private boolean trackingStarted;
     private MapView mMapView;
-    private ArcGISMap map;
+    private IMapController mapController;
     private Button btnStart;
-    double latitude = 47.5;
-    double longitude = 9.01;
     private Location previousLocation;
-    private MyLocationListener myLocationListener;
-    ArrayList<PositionUtils.Position> positions;
-    private GraphicsOverlay overlay;
-    private int selectedPointColor = Color.RED;
-    private int selectedLineColor = Color.RED;
-    private int selectedPolygonColor = Color.RED;
     private Settings settings;
+    private boolean deleteLastLayer = false;
+
+    private final SimpleDateFormat formatter;
+    List<Date> trackingTime;
 
     public MapFragment() {
         super(R.layout.mapview);
@@ -86,6 +81,9 @@ public class MapFragment extends Fragment {
         previousLocation = new Location("Init Position");
         previousLocation.setLongitude(9.0);
         previousLocation.setLatitude(49.0);
+
+        formatter = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
+        trackingTime = new ArrayList<>();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.N)
@@ -95,38 +93,42 @@ public class MapFragment extends Fragment {
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
     @Override
-    public void onCreate(@Nullable Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
-        myLocationListener = new MyLocationListener();
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.Q)
-    @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
+        //ToDo Warum wird onViewCreateed zwei mal aufgerufen
         settings = new Settings();
         if (getArguments() != null) {
             settings = MapFragmentArgs.fromBundle(getArguments()).getSettings();
         }
 
+        geoPoints = new ArrayList<>();
+
         btnStart = requireView().findViewById(R.id.btnStart);
-        btnStart.setOnClickListener(this::positionTracking);
-        btnStart.setActivated(!MainActivity.mPositionTrackingShapefilePath.isEmpty());
+
+        btnStart.setOnClickListener(v -> {
+            try {
+                positionTracking(v);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+        if (settings != null)
+            btnStart.setActivated(!settings.positionTrackingShapefilePath.isEmpty());
 
         Button btnClear = requireView().findViewById(R.id.btnClear);
         btnClear.setOnClickListener(v -> {
-            ListenableList<GraphicsOverlay> graphicOverlays = mMapView.getGraphicsOverlays();
-            for (GraphicsOverlay graphicOverlay : graphicOverlays) {
-                graphicOverlay.getGraphics().clear();
+            List<Overlay> graphicOverlays = mMapView.getOverlays();
+
+            for (int i = graphicOverlays.size() - 1; i > 0; i--) {
+                mMapView.getOverlays().remove(graphicOverlays.get(i));
             }
-            });
+        });
 
         Button btnEdit = requireView().findViewById(R.id.btnEdit);
         btnEdit.setOnClickListener(v -> {
             NavController navController = Navigation.findNavController(requireActivity(), R.id.fragment_container_view);
-            com.example.position2shp.Map.MapFragmentDirections.ActionMapFragmentToMapEditFragment actionToEditFragment = MapFragmentDirections.actionMapFragmentToMapEditFragment();
+            MapFragmentDirections.ActionMapFragmentToMapEditFragment actionToEditFragment = MapFragmentDirections.actionMapFragmentToMapEditFragment();
             actionToEditFragment.setSettings(settings);
             navController.navigate(actionToEditFragment);
         });
@@ -134,7 +136,7 @@ public class MapFragment extends Fragment {
         Button btnSettings = requireView().findViewById(R.id.btnSettings);
         btnSettings.setOnClickListener(v -> {
             NavController navController = Navigation.findNavController(requireActivity(), R.id.fragment_container_view);
-            com.example.position2shp.Map.MapFragmentDirections.ActionMapFragmentToSettingsContainerFragment actionToSettingsFragment = MapFragmentDirections.actionMapFragmentToSettingsContainerFragment();
+            MapFragmentDirections.ActionMapFragmentToSettingsContainerFragment actionToSettingsFragment = MapFragmentDirections.actionMapFragmentToSettingsContainerFragment();
             actionToSettingsFragment.setSettings(settings);
             navController.navigate(actionToSettingsFragment);
         });
@@ -152,138 +154,159 @@ public class MapFragment extends Fragment {
         // initialize map that shows tracking and shapefiles
         initializeMap();
 
-        initializeBackgroundShpFile();
+        try {
+            initializeBackgroundShpFile();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
 
-        myLocationListener.start();
+      //  myLocationListener.start();
+
+        deleteLastLayer = false;
     }
 
-    private void setGeometryColors()
-    {
-        if (settings.pointColor == TrackingColour.RED.ordinal())
-            selectedPointColor = Color.RED;
-        else if (settings.pointColor == TrackingColour.YELLOW.ordinal())
-            selectedPointColor = Color.YELLOW;
-        else if (settings.pointColor == TrackingColour.GREEN.ordinal())
-            selectedPointColor = Color.GREEN;
-        else if (settings.pointColor == TrackingColour.BLUE.ordinal())
-            selectedPointColor = Color.BLUE;
+    private void loadShapeFile(File f) throws Exception {
+        mMapView.setTileSource(TileSourceFactory.DEFAULT_TILE_SOURCE);
+        mMapView.setUseDataConnection(true);
 
-        if (settings.lineColor == TrackingColour.RED.ordinal())
-            selectedLineColor = Color.RED;
-        else if (settings.lineColor == TrackingColour.YELLOW.ordinal())
-            selectedLineColor = Color.YELLOW;
-        else if (settings.lineColor == TrackingColour.GREEN.ordinal())
-            selectedLineColor = Color.GREEN;
-        else if (settings.lineColor == TrackingColour.BLUE.ordinal())
-            selectedLineColor = Color.BLUE;
+        //ShapeConverter.convert();
+        ShapefileReader shpReader = new ShapefileReader(requireContext());
+        List<PointData[]> points = shpReader.convert(f);
 
-        if (MainActivity.colorPolygon == TrackingColour.RED)
-            selectedPolygonColor = Color.RED;
-        else if (MainActivity.colorPolygon == TrackingColour.YELLOW)
-            selectedPolygonColor = Color.YELLOW;
-        else if (MainActivity.colorPolygon == TrackingColour.GREEN)
-            selectedPolygonColor = Color.GREEN;
-        else if (MainActivity.colorPolygon == TrackingColour.BLUE)
-            selectedPolygonColor = Color.BLUE;
+        CoordinateReferenceSystem crs = shpReader.getCRS(f);
+        String crsName = crs.getName();
+
+        List<Overlay> folder = new ArrayList<>();
+        ShapeType mShapeType = shpReader.mShapeType;
+        if (crsName.contains("ETRS89") && crsName.contains("UTM") && crsName.contains("32N")) {
+            String csNameSrc = "EPSG:25832";
+            folder = shpReader.transformToWGS84(mMapView, mShapeType, points, csNameSrc, settings);
+        } else if (crsName.contains("GCS_WGS_1984")) {
+            folder = shpReader.getOverlay(mMapView, points, mShapeType, settings);
+        }
+
+        mMapView.getOverlayManager().addAll(folder);
+        mMapView.invalidate();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.N)
-    private void initializeBackgroundShpFile() {
+    private void initializeBackgroundShpFile() throws Exception {
         if (settings == null)
             return;
 
         File f = new File(settings.backgroundShpFile);
         if (f.exists() && f.canRead()) {
-            // create the Symbol
-            String shpFile = settings.backgroundShpFile.replace(".shp", "");
-            int shapeFileType = PositionUtils.getShapeFileType(shpFile);
-
-            // create the Renderer
-            SimpleRenderer renderer = new SimpleRenderer();
-
-            setGeometryColors();
-
-            if (shapeFileType == 3)
-            {
-                SimpleLineSymbol lineSymbol = new SimpleLineSymbol(SimpleLineSymbol.Style.SOLID, selectedLineColor, 1.0f);
-                SimpleFillSymbol fillSymbol = new SimpleFillSymbol(SimpleFillSymbol.Style.SOLID, Color.TRANSPARENT, lineSymbol);
-
-                renderer.setSymbol(fillSymbol);
-            }
-            else if (shapeFileType == 5)
-            {
-                SimpleLineSymbol lineSymbol = new SimpleLineSymbol(SimpleLineSymbol.Style.SOLID, selectedPolygonColor, 1.0f);
-                SimpleFillSymbol fillSymbol = new SimpleFillSymbol(SimpleFillSymbol.Style.SOLID, Color.TRANSPARENT, lineSymbol);
-
-                renderer.setSymbol(fillSymbol);
-            }
-            else if (shapeFileType == 1)
-            {
-                SimpleMarkerSymbol pointSymbol =
-                    new SimpleMarkerSymbol(SimpleMarkerSymbol.Style.TRIANGLE, selectedPointColor, 10f);
-                renderer.setSymbol(pointSymbol);
-            }
-
-			Shapefile backgroundLayer = new Shapefile(map, settings.backgroundShpFile, renderer);
-            backgroundLayer.load();
+            loadShapeFile(f);
         }
 
-        File f2 = new File(MainActivity.mPositionTrackingShapefilePath);
-        if (f2.exists() && f2.canRead()) {
-            // create the Symbol
-            String shpFile = MainActivity.mPositionTrackingShapefilePath.replace(".shp", "");
-            int shapeFileType = PositionUtils.getShapeFileType(shpFile);
-
-            // create the Renderer
-            SimpleRenderer renderer = new SimpleRenderer();
-
-            setGeometryColors();
-
-            if (shapeFileType == 3)
-            {
-                SimpleLineSymbol lineSymbol = new SimpleLineSymbol(SimpleLineSymbol.Style.SOLID, selectedLineColor, 1.0f);
-                SimpleFillSymbol fillSymbol = new SimpleFillSymbol(SimpleFillSymbol.Style.SOLID, Color.TRANSPARENT, lineSymbol);
-
-                renderer.setSymbol(fillSymbol);
+        if (!settings.createNewShapefile) {
+            f = new File(settings.positionTrackingShapefilePath);
+            if (f.exists() && f.canRead()) {
+                loadShapeFile(f);
             }
-            else if (shapeFileType == 5)
-            {
-                SimpleLineSymbol lineSymbol = new SimpleLineSymbol(SimpleLineSymbol.Style.SOLID, selectedPolygonColor, 1.0f);
-                SimpleFillSymbol fillSymbol = new SimpleFillSymbol(SimpleFillSymbol.Style.SOLID, Color.TRANSPARENT, lineSymbol);
-
-                renderer.setSymbol(fillSymbol);
-            }
-            else if (shapeFileType == 1)
-            {
-                SimpleMarkerSymbol pointSymbol =
-                        new SimpleMarkerSymbol(SimpleMarkerSymbol.Style.TRIANGLE, selectedPointColor, 10f);
-                renderer.setSymbol(pointSymbol);
-            }
-
-            Shapefile backgroundLayer = new Shapefile(map, MainActivity.mPositionTrackingShapefilePath, renderer);
-            backgroundLayer.load();
         }
     }
+
 
     @SuppressLint("ClickableViewAccessibility")
     private void initializeMap() {
         mMapView = requireView().findViewById(R.id.mapView);
 
-        map = new ArcGISMap(Basemap.Type.TOPOGRAPHIC, latitude, longitude, 16);
-        mMapView.setMap(map);
-        mLocationDisplay = mMapView.getLocationDisplay();
-        centerMapView();
+        mMapView.setTileSource(TileSourceFactory.MAPNIK);
+        mMapView.getZoomController().setVisibility(CustomZoomButtonsController.Visibility.ALWAYS);
+        mMapView.setMultiTouchControls(true);
 
-        mMapView.setOnTouchListener(
-                new DefaultMapViewOnTouchListener(requireContext(), mMapView) {
-                    @Override
-                    public boolean onSingleTapConfirmed(MotionEvent motionEvent) {
-						/*android.graphics.Point screenPoint = new android.graphics.Point(Math.round(motionEvent.getX()),
-								Math.round(motionEvent.getY()));
-						Point newPoint = mMapView.screenToLocation(screenPoint);*/
-                        return true;
+        mapController = mMapView.getController();
+        mapController.setZoom(16.0);
+
+        mLocationOverlay = new MyLocationNewOverlay(new GpsMyLocationProvider(requireContext()), mMapView){
+            @RequiresApi(api = Build.VERSION_CODES.Q)
+            @Override
+            public void onLocationChanged(Location gps_location, IMyLocationProvider source) {
+                super.onLocationChanged(gps_location, source);
+                if (settings == null)
+                    return;
+
+                try {
+                    if (gps_location != null) {
+                        final double latitudeNew = gps_location.getLatitude();
+                        final double longitudeNew = gps_location.getLongitude();
+                        float distance = 0.0f;
+                        if (previousLocation != null)
+                            distance = gps_location.distanceTo(previousLocation);
+
+                        double[] coordinates = new double[3];
+                        if (settings.refSystem == ReferenceSystems.UTM_32N.ordinal()) {
+                            WGS84ToUTM wgsToUtm = new WGS84ToUTM();
+                            coordinates = wgsToUtm.calcNorthEast(latitudeNew, longitudeNew);
+                        } else if (settings.refSystem == ReferenceSystems.WGS84.ordinal()) {
+                            coordinates[0] = latitudeNew;
+                            coordinates[1] = longitudeNew;
+                        }
+
+                        if (distance > settings.trackingSensitivity) {
+                            latitude = latitudeNew;
+                            longitude = longitudeNew;
+                            GeoPoint point = new GeoPoint(latitude, longitude);
+                            if (previousLocation.getProvider().equals("Init Position"))
+                                mapController.setCenter(point);
+
+                            if (trackingStarted && settings.automaticTracking) {
+                                updateTracking(point);
+                            }
+                            previousLocation = gps_location;
+                        }
+
+                        if (settings.refSystem == ReferenceSystems.WGS84.ordinal()) {
+                            textViewGpsX.setText(df.format(coordinates[0]));
+                            textViewGpsY.setText(df.format(coordinates[1]));
+                            textViewGpsZ.setText(df.format(gps_location.getAltitude()));
+                        } else {
+                            textViewGpsX.setText(dfUtm.format(coordinates[0]));
+                            textViewGpsY.setText(dfUtm.format(coordinates[1]));
+                            textViewGpsZ.setText("");
+                        }
                     }
-                });
+                } catch (SecurityException ex) {
+
+                    ActivityCompat.requestPermissions(requireActivity(), new String[]{
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                                    Manifest.permission.ACCESS_BACKGROUND_LOCATION},
+                            1);
+                }
+            }
+        };
+        mLocationOverlay.enableMyLocation();
+        if (settings != null && settings.automaticTracking && trackingStarted) {
+            mLocationOverlay.enableFollowLocation();
+            mapController.setCenter(new GeoPoint(latitude, longitude));
+        }
+
+        mMapView.getOverlays().add(mLocationOverlay);
+
+
+        MapEventsReceiver mReceive = new MapEventsReceiver() {
+            @Override
+            public boolean singleTapConfirmedHelper(GeoPoint p) {
+                //Toast.makeText(requireContext(), p.getLatitude() + " - " + p.getLongitude(), Toast.LENGTH_LONG).show();
+
+                return false;
+            }
+
+            @Override
+            public boolean longPressHelper(GeoPoint p) {
+                //Toast.makeText(requireContext(), p.getLatitude() + " - " + p.getLongitude(), Toast.LENGTH_SHORT).show();
+                if (trackingStarted && !settings.automaticTracking) {
+                    updateTracking(p);
+                }
+                return false;
+            }
+        };
+
+
+        MapEventsOverlay OverlayEvents = new MapEventsOverlay(mReceive);
+        mMapView.getOverlays().add(OverlayEvents);
     }
 
     private void initializePositionInfo() {
@@ -292,87 +315,84 @@ public class MapFragment extends Fragment {
             TextView label = requireView().findViewById(R.id.tvReferenceSystem);
             if (settings.refSystem == ReferenceSystems.WGS84.ordinal())
                 label.setText(R.string.wgs84);
-            else if (settings.refSystem == ReferenceSystems.UTM.ordinal())
+            else if (settings.refSystem == ReferenceSystems.UTM_32N.ordinal())
                 label.setText(R.string.utm);
         }
     }
 
-    public void positionTracking(View view) {
+    public void positionTracking(View view) throws IllegalCoordinateException, CRSException, CoordinateOperationException {
         if (view.getId() == R.id.btnStart) {
-            if (!view.isActivated())
-            {
+            if (!view.isActivated()) {
                 CharSequence text = "Please select or create a shapefile in the settings first!";
-                int duration = Toast.LENGTH_SHORT;
-
-                Toast toast = Toast.makeText(getContext(), text, duration);
-                toast.show();
+                Toast.makeText(getContext(), text, LENGTH_SHORT).show();
                 return;
             }
             if (!trackingStarted) {
-                overlay = new GraphicsOverlay();
-                mMapView.getGraphicsOverlays().add(overlay);
-				//ToDo: was passiert mit dem Tracking wenn man das Fragment verlässt? static !?!?
-
-                if (settings.refSystem == ReferenceSystems.UTM.ordinal())
-                    polyLineCollection = new PointCollection(SpatialReference.create(25832));
-                else if (settings.refSystem == ReferenceSystems.WGS84.ordinal())
-                    polyLineCollection = new PointCollection(SpatialReference.create(4326));
+                //ToDo: was passiert mit dem Tracking wenn man das Fragment verlässt? static !?!?
 
                 trackingStarted = true;
                 btnStart.setBackground(ResourcesCompat.getDrawable(requireActivity().getResources(), R.drawable.stop_black, null));
-
-                setGeometryColors();
             } else {
                 trackingStarted = false;
+                deleteLastLayer = false;
+                ArrayList<PositionUtils.Position> positions;
 
-                if ((polyLineCollection.size() >= 2 && MainActivity.actualShpType == ShapefileTypes.Line) ||
+                if ((geoPoints.size() >= 2 && MainActivity.actualShpType == ShapefileTypes.Line) ||
                         MainActivity.actualShpType == ShapefileTypes.Point) {
                     int i = 0;
                     positions = new ArrayList<>();
-                    SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
-                    Date date = new Date();
-                    for (Point p : polyLineCollection) {
-                        positions.add(i, new PositionUtils.Position(p.getY(), p.getX(), formatter.format(date)));
-                        i++;
+
+                    //Date date = new Date();
+                    Iterator<Date> it = trackingTime.iterator();
+                    if (settings.refSystem == ReferenceSystems.UTM_32N.ordinal()) {
+                        ShapefileReader sr = new ShapefileReader(requireContext());
+                        String csNameSrc = "EPSG:4326";
+                        List<GeoPoint> geoPointsTransformed = sr.transformToUTM32(geoPoints, csNameSrc);
+
+                        for (GeoPoint p : geoPointsTransformed) {
+                            positions.add(i, new PositionUtils.Position(p.getLongitude(), p.getLatitude(), formatter.format(it.next())));
+                            i++;
+                        }
+                    } else if (settings.refSystem == ReferenceSystems.WGS84.ordinal()) {
+                        for (GeoPoint p : geoPoints) {
+                            positions.add(i, new PositionUtils.Position(p.getLatitude(), p.getLongitude(), formatter.format(it.next())));
+                            i++;
+                        }
                     }
                     PositionUtils.appendShapefile(positions);
-                }
-                else if ((polyLineCollection.size() >= 4 && MainActivity.actualShpType == ShapefileTypes.Polygon)) {
+                } else if ((geoPoints.size() >= 4 && MainActivity.actualShpType == ShapefileTypes.Polygon)) {
                     int i = 0;
                     positions = new ArrayList<>();
-                    SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
-                    Date date = new Date();
-                    for (Point p : polyLineCollection) {
-                        positions.add(i, new PositionUtils.Position(p.getY(), p.getX(), formatter.format(date)));
-                        i++;
+                    Iterator<Date> it = trackingTime.iterator();
+                    if (settings.refSystem == ReferenceSystems.UTM_32N.ordinal()) {
+                        ShapefileReader shpReader = new ShapefileReader(requireContext());
+                        String csNameSrc = "EPSG:4326";
+                        List<GeoPoint> geoPointsTransformed = shpReader.transformToUTM32(geoPoints, csNameSrc);
+                        for (GeoPoint p : geoPointsTransformed) {
+                            positions.add(i, new PositionUtils.Position(p.getLongitude(), p.getLatitude(), formatter.format(it.next())));
+                            i++;
+                        }
+                        GeoPoint p0 = geoPointsTransformed.get(0);
+                        positions.add(i, new PositionUtils.Position(p0.getLongitude(), p0.getLatitude(), formatter.format(trackingTime.get(0))));
+                    } else if (settings.refSystem == ReferenceSystems.WGS84.ordinal()) {
+                        for (GeoPoint p : geoPoints) {
+                            positions.add(i, new PositionUtils.Position(p.getLatitude(), p.getLongitude(), formatter.format(it.next())));
+                            i++;
+                        }
+                        GeoPoint p0 = geoPoints.get(0);
+                        positions.add(i, new PositionUtils.Position(p0.getLatitude(), p0.getLongitude(), formatter.format(trackingTime.get(0))));
                     }
-                    Point p0 = polyLineCollection.get(0);
-                    positions.add(i, new PositionUtils.Position(p0.getY(), p0.getX(), formatter.format(date)));
+
                     PositionUtils.appendShapefile(positions);
-                }
-                else if ((polyLineCollection.size() < 4 && MainActivity.actualShpType == ShapefileTypes.Polygon))
-                {
+                } else if ((geoPoints.size() < 4 && MainActivity.actualShpType == ShapefileTypes.Polygon)) {
                     CharSequence text = "Not enough points for polygon feature!";
-                    int duration = Toast.LENGTH_SHORT;
-
-                    Toast toast = Toast.makeText(getContext(), text, duration);
-                    toast.show();
-                }
-                else if (polyLineCollection.size() < 2 && MainActivity.actualShpType == ShapefileTypes.Line)
-                {
+                    Toast.makeText(getContext(), text, LENGTH_SHORT).show();
+                } else if (geoPoints.size() < 2 && MainActivity.actualShpType == ShapefileTypes.Line) {
                     CharSequence text = "Not enough points for line feature!";
-                    int duration = Toast.LENGTH_SHORT;
-
-                    Toast toast = Toast.makeText(getContext(), text, duration);
-                    toast.show();
-                }
-                else if (polyLineCollection.isEmpty())
-                {
+                    Toast.makeText(getContext(), text, LENGTH_SHORT).show();
+                } else if (geoPoints.isEmpty()) {
                     CharSequence text = "No points tracked yet!";
-                    int duration = Toast.LENGTH_SHORT;
-
-                    Toast toast = Toast.makeText(getContext(), text, duration);
-                    toast.show();
+                    Toast.makeText(getContext(), text, LENGTH_SHORT).show();
                 }
 
                 btnStart.setBackground(ResourcesCompat.getDrawable(requireActivity().getResources(), R.drawable.start_selector, null));
@@ -381,171 +401,59 @@ public class MapFragment extends Fragment {
     }
 
     public void centerMapView() {
-        mLocationDisplay.setAutoPanMode(LocationDisplay.AutoPanMode.RECENTER);
-        if (!mLocationDisplay.isStarted())
-            mLocationDisplay.startAsync();
+        mapController = mMapView.getController();
+        mapController.setZoom(18.0);
+
+        mapController.setCenter(mLocationOverlay.getMyLocation());
+        //ToDo: pause resume destroy mapController mapview mLocationOverlay
     }
 
     @Override
     public void onPause() {
         super.onPause();
-        mMapView.pause();
+        mMapView.onPause();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
     @Override
     public void onResume() {
         super.onResume();
-        mMapView.resume();
+        mMapView.onResume();
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
-        mMapView.dispose();
-        myLocationListener.remove();
+        //  mMapView.on();
     }
 
-    class MyLocationListener implements LocationListener {
+    public void updateTracking(GeoPoint point) {
+        geoPoints.add(point);
+        trackingTime.add(new Date());
 
-        LocationManager mLocationManager;
-
-        @RequiresApi(api = Build.VERSION_CODES.Q)
-        MyLocationListener(){
-            mLocationManager = (LocationManager) requireContext().getSystemService(Context.LOCATION_SERVICE);
-            if (mLocationManager != null) {
-                if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
-                        ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
-                        ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                    ActivityCompat.requestPermissions(requireActivity(), new String[]{
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                                    Manifest.permission.ACCESS_BACKGROUND_LOCATION},
-                            1);
-                }
-            }
+        List<Overlay> overlays = mMapView.getOverlays();
+        if (overlays.size() > 1 && deleteLastLayer) {
+            mMapView.getOverlays().remove(overlays.size() - 1);
         }
 
-        @SuppressLint("MissingPermission")
-        void start(){
-            mLocationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 100, 0, this);
-            mLocationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 100, 0, this);
+        deleteLastLayer = true;
+        ShapefileReader sr = new ShapefileReader(requireContext());
+        if (MainActivity.actualShpType == ShapefileTypes.Point) {
+            // add overlay
+            mMapView.getOverlays().addAll(sr.createMarkers(mMapView, geoPoints, settings));
+
+        } else if (MainActivity.actualShpType == ShapefileTypes.Line) {
+            List<Overlay> folder = new ArrayList<>();
+            folder.add(sr.createPolyLine(geoPoints, settings));
+            mMapView.getOverlayManager().addAll(folder);
+
+        } else if (MainActivity.actualShpType == ShapefileTypes.Polygon) {
+            List<Overlay> folder = new ArrayList<>();
+            folder.add(sr.createPolygon(geoPoints, settings));
+            mMapView.getOverlayManager().addAll(folder);
+
+            geoPoints.remove(geoPoints.size() - 1);
         }
-
-        @SuppressLint("LongLogTag")
-        public void remove(){
-            Log.d("Position2ShpLocationListener", "Stop location listener");
-            mLocationManager.removeUpdates(this);
-        }
-
-        @RequiresApi(api = Build.VERSION_CODES.Q)
-        @Override
-        public void onLocationChanged(@NonNull Location location) {
-
-            if (settings == null)
-                return;
-
-            try {
-                Location gps_location = mLocationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-                location.equals(gps_location);
-
-                if (gps_location != null) {
-                    final double latitudeNew = gps_location.getLatitude();
-                    final double longitudeNew = gps_location.getLongitude();
-                    float distance = 0.0f;
-                    if (previousLocation != null)
-                        distance = gps_location.distanceTo(previousLocation);
-
-                    double[] coordiates = new double[3];
-                    if (settings.refSystem == ReferenceSystems.UTM.ordinal()) {
-                        WGS84ToUTM wgsToUtm = new WGS84ToUTM();
-                        coordiates = wgsToUtm.calcNorthEast(latitudeNew, longitudeNew);
-                    }
-                    else if (settings.refSystem == ReferenceSystems.WGS84.ordinal())
-                    {
-                        coordiates[0] = longitudeNew ;
-                        coordiates[1] = latitudeNew;
-                    }
-
-                    if (distance > settings.trackingSensitivity) {
-                        latitude = latitudeNew;
-                        longitude = longitudeNew;
-                        previousLocation = gps_location;
-
-                        if (settings.refSystem == ReferenceSystems.UTM.ordinal())
-                        {
-                            Point point = new Point(coordiates[0], coordiates[1], SpatialReference.create(25832));
-                            Viewpoint viewpoint = new Viewpoint(point, 200000);
-                            map.setInitialViewpoint(viewpoint);
-                            //mMapView.setViewpoint(viewpoint);}
-                        }
-                        else if (settings.refSystem == ReferenceSystems.WGS84.ordinal())
-                        {
-                            Point point = new Point(coordiates[0], coordiates[1], SpatialReference.create(4326));
-                            Viewpoint viewpoint = new Viewpoint(point, 200000);
-                            map.setInitialViewpoint(viewpoint);
-                            //mMapView.setViewpoint(viewpoint);}
-                        }
-
-                        if (trackingStarted) {
-                            polyLineCollection.add(coordiates[0], coordiates[1]);
-
-                            ListenableList<Graphic> test = overlay.getGraphics();
-                            if (test.size() >0)
-                                overlay.getGraphics().remove(0);
-
-                            if (MainActivity.actualShpType == ShapefileTypes.Point)
-                            {
-                                SimpleMarkerSymbol markerSymbol = new SimpleMarkerSymbol(SimpleMarkerSymbol.Style.TRIANGLE, selectedPointColor, 10);
-                                Polyline tracking = new Polyline(polyLineCollection);
-                                overlay.getGraphics().add(new Graphic(tracking, markerSymbol));
-                            }
-                            else if (MainActivity.actualShpType == ShapefileTypes.Line)
-                            {
-                                SimpleLineSymbol lineSymbol = new SimpleLineSymbol(SimpleLineSymbol.Style.SOLID, selectedLineColor, 5);
-                                Polyline tracking = new Polyline(polyLineCollection);
-                                overlay.getGraphics().add(new Graphic(tracking, lineSymbol));
-                            }
-                            else if (MainActivity.actualShpType == ShapefileTypes.Polygon)
-                            {
-                                SimpleLineSymbol lineSymbol = new SimpleLineSymbol(SimpleLineSymbol.Style.SOLID, selectedPolygonColor, 5);
-                                SimpleFillSymbol fillSymbol = new SimpleFillSymbol(SimpleFillSymbol.Style.CROSS, selectedPolygonColor, lineSymbol);
-                                Polygon polygon = new Polygon (polyLineCollection);
-                                overlay.getGraphics().add(new Graphic(polygon, fillSymbol));
-                            }
-                        }
-                    }
-
-                    if (!mLocationDisplay.isStarted())
-                        mLocationDisplay.startAsync();
-
-                    if (settings.refSystem == ReferenceSystems.WGS84.ordinal()) {
-                        textViewGpsX.setText(df.format(coordiates[0]));
-                        textViewGpsY.setText(df.format(coordiates[1]));
-                        textViewGpsZ.setText(df.format(gps_location.getAltitude()));
-                    } else {
-                        textViewGpsX.setText(dfUtm.format(coordiates[0]));
-                        textViewGpsY.setText(dfUtm.format(coordiates[1]));
-                        textViewGpsZ.setText("");
-                    }
-                }
-            } catch (SecurityException ex) {
-
-                ActivityCompat.requestPermissions(requireActivity(), new String[]{
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION,
-                                Manifest.permission.ACCESS_BACKGROUND_LOCATION},
-                        1);
-            }
-        }
-
-        @Override
-        public void onLocationChanged(@NonNull List<Location> locations) { }
-
-        @Override
-        public void onProviderEnabled(@NonNull String provider) { }
-
-        @Override
-        public void onProviderDisabled(@NonNull String provider) { }
+        mMapView.invalidate();
     }
 }
